@@ -1,15 +1,22 @@
 import numpy as np
 import pandas as pd
+from sklearn.metrics import mean_absolute_error
 from plots import *
+from save_vectors import *
+from tracking_evaluation import *
+from histograms_of_observations import *
 
 X = np.array(pd.read_csv('x.csv'))
 Y = np.array(pd.read_csv('y.csv'))
+X = np.reshape(X, [len(X), ])
+Y = np.reshape(Y, [len(Y), ])
+
 a = np.array(pd.read_csv('a.csv'))
 b = np.array(pd.read_csv('b.csv'))
 a = np.reshape(a, [len(a), ])
 b = np.reshape(b, [len(a), ])
 measurements = np.stack((a, b), axis=0)
-
+gate_arr = []
 # Initial state initialisation
 # state_vector = [xk, vxk, yk, vyk]
 x = np.transpose(np.array([[0.0, 0.0, 0.0, 0.0]]))
@@ -26,22 +33,68 @@ F = np.array([[1.0, dt, 0.0, 0.0],
 
 std_x, std_vx = 0.1, 0.1
 std_y, std_vy = 0.2, 0.2
-# Matrix of motion noise
+# Covariance of (motion) noise
 Q = np.array([[std_x, 0.0, 0.0, 0.0],
               [0.0, std_y, 0.0, 0.0],
               [0.0, 0.0, std_vx, 0.0],
               [0.0, 0.0, 0.0, std_vy]])
 
-# Observation model assuming we get measurements from speed
+# Observation model assuming we get measurements from positions
 H = np.array([[1, 0, 0, 0],
               [0, 0, 1, 0]])
 
-std_u, std_v = 0.3, 0.3
-R = np.array([[std_u, 0.0],
-              [0.0, std_v]])
+var_u, var_v = 0.3, 0.3
+R = np.array([[var_u, 0.0],
+              [0.0, var_v]])
 
-I = np.eye(4)
 
 # Plot covariance Matrix
-plot_covariances(P,R)
+# plot_covariances(P, R)
 
+for n in range(len(measurements[0])):
+    # Time Update (Prediction)
+    # ========================
+    # Project the state ahead
+    x = np.dot(F, x)
+
+    # Project the error covariance ahead
+    P = np.dot(np.dot(F, P), np.transpose(F)) + Q
+
+    # Measurement Update (Correction)
+    # ===============================
+    # Compute the Kalman Gain and Innovation matrix
+    S = np.dot(np.dot(H, P), np.transpose(H)) + R
+    K = np.dot(np.dot(P, np.transpose(H)), np.linalg.inv(S))
+
+    # Update the estimate via z
+    Z = measurements[:, n].reshape(2, 1)
+
+    Z_pred = Z - np.dot(H, x)
+
+    gate = np.dot(np.dot(np.transpose(Z_pred), np.linalg.inv(S)), Z_pred)
+
+    # gate_arr.append(gate)
+    # if gate > 9.21:
+    #     print('!!!!!!!!Observation outside validation gate!!!!!!!!', n)
+    #     x = x
+    #     P = P
+    # else:
+    x = x + np.dot(K, Z_pred)
+    # Update the error covariance
+    P = P - np.dot(np.dot(K, S),np.transpose(K))
+
+    # # Save states (for Plotting)
+    append_states(x, Z, P, R, K)
+    # print(x.shape, Z.shape, P.shape, R.shape, K.shape)
+
+# plot_xy(a, b, X, Y, x_pred, y_pred)
+# plot_x(measurements, vx_pred, vy_pred)
+# plot_k(measurements, Kx, Ky, Kvx, Kvy)
+# plot_p(measurements, Px, Py, Pvx, Pvy)
+#
+# absolute_error(x_pred, X, y_pred, Y, show_plot=False)
+# absolute_error(a, X, b, Y, show_plot=False)
+
+# We chose these variances from here
+obs_analysis(a, X)
+obs_analysis(b, Y)
